@@ -135,11 +135,11 @@ def login():
             # Lưu thông tin user vào session
             session["db_user"] = username
             session["db_pass"] = password
-            flash("Login thành công!", "success")
+            flash("Login successed!", "success")
             return redirect(url_for("product_list"))
 
         except Error as e:
-            error = f"Login thất bại: {e}"
+            error = f"Login fail: {e}"
 
     return render_template("login.html", error=error)
 
@@ -147,7 +147,7 @@ def login():
 @app.route("/logout")
 def logout():
     session.clear()
-    flash("Đã logout.", "info")
+    flash("logout successed.", "info")
     return redirect(url_for("login"))
 
 
@@ -163,7 +163,6 @@ def product_list():
     search = request.args.get("q", "").strip()
     category_filter = request.args.get("category", "").strip()
     sort = request.args.get("sort", "title_asc")
-    selected_asin = request.args.get("asin", "").strip()
 
     sort_map = {
         "title_asc": "p.Product_title ASC",
@@ -175,21 +174,14 @@ def product_list():
     }
     order_clause = sort_map.get(sort, "p.Product_title ASC")
 
-    # Lấy danh sách product + MinPrice
+    # Query products với ảnh từ Media
     query = """
         SELECT
             p.ASIN,
             p.Product_title,
-            p.Brand,
-            p.Weight,
-            c.Category_ID,
-            c.Hierarchy,
-            (
-                SELECT MIN(o.Price)
-                FROM Offer o
-                WHERE o.ASIN = p.ASIN
-            ) AS MinPrice
+            m.Primary_image
         FROM Product p
+        LEFT JOIN Media m ON p.ASIN = m.ASIN
         LEFT JOIN Category c ON p.Category_ID = c.Category_ID
         WHERE 1=1
     """
@@ -211,53 +203,9 @@ def product_list():
     cursor.execute(query, params)
     products = cursor.fetchall()
 
-    # categories cho dropdown
+    # Categories cho filter (giữ nguyên)
     cursor.execute("SELECT Category_ID, Hierarchy FROM Category ORDER BY Category_ID")
     categories = cursor.fetchall()
-
-    # Nếu có asin được chọn -> lấy product + offers
-    selected_product = None
-    offers = []
-
-    if selected_asin:
-        cursor.execute(
-            """
-            SELECT
-                p.ASIN,
-                p.Product_title,
-                p.Brand,
-                c.Category_ID,
-                c.Hierarchy
-            FROM Product p
-            LEFT JOIN Category c ON p.Category_ID = c.Category_ID
-            WHERE p.ASIN = %s
-            """,
-            (selected_asin,),
-        )
-        selected_product = cursor.fetchone()
-
-        if selected_product:
-            cursor.execute(
-                """
-                SELECT
-                    o.Offer_ID,
-                    o.Seller_ID,
-                    s.Storefront_name,
-                    s.Operation_status,
-                    o.Item_condition,
-                    o.Price,
-                    o.Currency,
-                    o.Fulfill_method,
-                    o.Handling_time,
-                    o.Inventory_pos
-                FROM Offer o
-                LEFT JOIN Seller s ON o.Seller_ID = s.Seller_ID
-                WHERE o.ASIN = %s
-                ORDER BY o.Price ASC
-                """,
-                (selected_asin,),
-            )
-            offers = cursor.fetchall()
 
     cursor.close()
     conn.close()
@@ -269,9 +217,6 @@ def product_list():
         search=search,
         category_filter=category_filter,
         sort=sort,
-        selected_asin=selected_asin,
-        selected_product=selected_product,
-        offers=offers,
     )
 
 
@@ -285,11 +230,14 @@ def product_create():
 
     if request.method == "POST":
         data, errors = validate_product_form(request.form, is_edit=False)
+        primary_image = request.form.get("primary_image", "").strip()
         if errors:
             for e in errors:
                 flash(e, "danger")
+            data["primary_image"] = primary_image  # Để giữ giá trị khi lỗi
             return render_template("product_form.html", product=data, categories=categories, is_edit=False)
 
+        conn = None
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -315,6 +263,17 @@ def product_create():
                     data["dimensions"],
                 ),
             )
+
+            # Insert Media nếu có primary_image
+            if primary_image:
+                cursor.execute(
+                    """
+                    INSERT INTO Media (ASIN, Primary_image)
+                    VALUES (%s, %s)
+                    """,
+                    (data["asin"], primary_image),
+                )
+
             conn.commit()
             cursor.close()
             conn.close()
@@ -323,6 +282,9 @@ def product_create():
             return redirect(url_for("product_list"))
 
         except Error as e:
+            if conn:
+                conn.rollback()
+                conn.close()
             flash(f"Lỗi khi insert product: {e}", "danger")
 
     # GET
@@ -336,6 +298,7 @@ def product_create():
         "flex_attribute": "",
         "weight": "",
         "dimensions": "",
+        "primary_image": "",
     }
     return render_template("product_form.html", product=empty_product, categories=categories, is_edit=False)
 
@@ -409,7 +372,7 @@ def cart_add_offer(offer_id):
                     if row:
                         cart_id = row["Cart_ID"]
                     else:
-                        flash("Cart đã chọn không tồn tại, sẽ tạo cart mới.", "warning")
+                        flash("warning")
 
                 # Nếu chưa có -> tạo cart mới
                 if not cart_id:
@@ -456,19 +419,19 @@ def cart_add_offer(offer_id):
                 conn.close()
 
                 flash(
-                    f"Đã thêm {quantity} item từ Offer {offer_id} vào cart {cart_id}.",
+                    f"Added {quantity} item from Offer {offer_id} to cart {cart_id}.",
                     "success",
                 )
                 return redirect(url_for("cart_detail", cart_id=cart_id))
 
             except Error as e:
                 conn.rollback()
-                flash(f"Lỗi khi thêm vào cart: {e}", "danger")
+                flash(f"error when add: {e}", "danger")
 
     # Nếu GET (hoặc POST lỗi) -> load list cart hiện có cho dropdown
     cursor.execute(
         """
-        SELECT 
+        SELECT  
             c.Cart_ID,
             c.Cart_name,
             COUNT(ci.Cart_Item_ID) AS Item_count,
@@ -562,7 +525,7 @@ def product_edit(asin):
             return redirect(url_for("product_list"))
 
         except Error as e:
-            flash(f"Lỗi khi update product: {e}", "danger")
+            flash(f"error when update product: {e}", "danger")
 
     # GET render form với data
     # map key cho phù hợp với template (product_form đang dùng)
@@ -595,7 +558,7 @@ def product_delete(asin):
         conn.close()
         flash("Deleted product successfully.", "success")
     except Error as e:
-        flash(f"Lỗi khi delete product: {e}", "danger")
+        flash(f"error delete product: {e}", "danger")
 
     return redirect(url_for("product_list"))
 
@@ -762,7 +725,7 @@ def cart_delete(cart_id):
 
     except Error as e:
         conn.rollback()
-        flash(f"Lỗi khi xoá cart: {e}", "danger")
+        flash(f"error when delete cart: {e}", "danger")
     finally:
         cursor.close()
         conn.close()
@@ -822,33 +785,33 @@ def wishlist_detail(wishlist_id):
             w.Wishlist_ID,
             w.Buyer_ID,
             u.User_name,
-            u.Display_name
+            u.Display_name,
+            COUNT(wi.Wishlist_item_ID) AS Item_count
         FROM Wishlist w
         JOIN Buyer b ON w.Buyer_ID = b.Buyer_ID
         JOIN Usr   u ON b.User_ID = u.User_ID
-        WHERE w.Wishlist_ID = %s
+        LEFT JOIN Wishlist_item wi ON w.Wishlist_ID = wi.Wishlist_ID
+        WHERE w.Wishlist_ID = %s              -- lọc đúng wishlist đang xem
+          AND u.Account_status <> 'Banned'    -- dùng u.Account_status, không phải b.
+        GROUP BY w.Wishlist_ID, w.Buyer_ID, u.User_name, u.Display_name
         """,
         (wishlist_id,),
     )
     header = cursor.fetchone()
 
     # Items: join Product để xem tên sản phẩm
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT 
             wi.Wishlist_item_ID,
             wi.ASIN,
-            p.Product_title,
-            wi.Quantity,
             wi.Priority,
-            wi.Short_note
+            wi.Short_note,
+            p.Product_title
         FROM Wishlist_item wi
-        JOIN Product p ON wi.ASIN = p.ASIN
+        LEFT JOIN Product p ON wi.ASIN = p.ASIN
         WHERE wi.Wishlist_ID = %s
-        ORDER BY wi.Priority IS NULL, wi.Priority, wi.Wishlist_item_ID
-        """,
-        (wishlist_id,),
-    )
+        ORDER BY wi.Wishlist_item_ID
+    """, (wishlist_id,))
     items = cursor.fetchall()
 
     cursor.close()
@@ -863,6 +826,7 @@ def wishlist_detail(wishlist_id):
         header=header,
         items=items,
     )
+
 
 # =========================
 # Buyer list + registration (call stored procedure register_buyer)
@@ -935,19 +899,18 @@ def buyer_register():
 
                 if result and result.get("Status") == "Success":
                     flash(
-                        f"Đăng ký thành công. User_ID: {result['UserID']}, Buyer_ID: {result['BuyerID']}",
+                        f"successed. User_ID: {result['UserID']}, Buyer_ID: {result['BuyerID']}",
                         "success",
                     )
                     return redirect(url_for("buyer_list"))
                 else:
                     flash(
-                        "Đăng ký thành công nhưng không nhận được thông tin trả về.",
                         "warning",
                     )
 
             except Error as e:
                 # Nếu procedure SIGNAL lỗi (trùng username/email, v.v.) sẽ nhảy vào đây
-                flash(f"Lỗi khi gọi register_buyer: {e}", "danger")
+                flash(f"error: {e}", "danger")
 
     # GET hoặc POST lỗi → render lại form
     return render_template("buyer_register.html")
@@ -1035,7 +998,7 @@ def buyer_edit(buyer_id):
 
         except Error as e:
             # ví dụ trùng username/email sẽ vào đây
-            flash(f"Lỗi khi update buyer: {e}", "danger")
+            flash(f"error when update buyer: {e}", "danger")
             buyer["User_name"] = username
             buyer["Email"] = email
             buyer["Display_name"] = display_name
@@ -1087,8 +1050,6 @@ def buyer_delete(buyer_id):
         cursor.close()
         conn.close()
         flash(
-            "Không thể xoá Buyer này vì đã có đơn hàng / wishlist / review liên quan. "
-            "Hãy đổi trạng thái sang 'Banned' thay vì xoá.",
             "danger",
         )
         return redirect(url_for("buyer_list"))
@@ -1104,7 +1065,7 @@ def buyer_delete(buyer_id):
         flash("Deleted buyer successfully.", "success")
     except Error as e:
         conn.rollback()
-        flash(f"Lỗi khi xoá buyer: {e}", "danger")
+        flash(f"error when delete buyer: {e}", "danger")
     finally:
         cursor.close()
         conn.close()
@@ -1149,7 +1110,7 @@ def report_revenue():
             conn.close()
 
         except Error as e:
-            error = f"Lỗi khi gọi stored procedure report_revenue: {e}"
+            error = f"error when stored procedure report_revenue: {e}"
 
     return render_template(
         "report_revenue.html",
@@ -1158,6 +1119,218 @@ def report_revenue():
         error=error,
     )
 
+@app.route("/wishlists/add-item/<asin>", methods=["GET", "POST"])
+def wishlist_add_item(asin):
+    if "db_user" not in session:
+        return redirect(url_for("login"))
 
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # 1. Kiểm tra product tồn tại
+    cursor.execute(
+        "SELECT ASIN, Product_title FROM Product WHERE ASIN = %s",
+        (asin,),
+    )
+    product = cursor.fetchone()
+
+    if not product:
+        cursor.close()
+        conn.close()
+        flash("Product not found.", "danger")
+        return redirect(url_for("product_list"))
+
+    errors = []
+
+    if request.method == "POST":
+        wishlist_id = (request.form.get("wishlist_id") or "").strip()
+        priority_str = (request.form.get("priority") or "").strip()
+        note = (request.form.get("note") or "").strip()
+
+        if not wishlist_id:
+            errors.append("Please choose a wishlist.")
+
+        # Priority (optional)
+        priority = None
+        if priority_str:
+            try:
+                priority = int(priority_str)
+            except ValueError:
+                errors.append("Priority must be an integer between 1 and 5.")
+            else:
+                if priority < 1 or priority > 5:
+                    errors.append("Priority must be between 1 and 5.")
+
+        # Check wishlist tồn tại
+        if not errors:
+            cursor.execute(
+                """
+                SELECT w.Wishlist_ID
+                FROM Wishlist w
+                JOIN Buyer b ON w.Buyer_ID = b.Buyer_ID
+                WHERE w.Wishlist_ID = %s
+                AND u.Account_status <> 'Banned'
+                """,
+                (wishlist_id,),
+            )
+            wl = cursor.fetchone()
+            if not wl:
+                errors.append("Wishlist not found.")
+
+        if not errors:
+            try:
+                # Xem item này đã tồn tại trong wishlist chưa
+                cursor.execute(
+                    """
+                    SELECT Wishlist_item_ID
+                    FROM Wishlist_item
+                    WHERE Wishlist_ID = %s AND ASIN = %s
+                    """,
+                    (wishlist_id, asin),
+                )
+                item = cursor.fetchone()
+
+                if item:
+                    # Đã có rồi: chỉ cập nhật priority / note, không đụng Quantity
+                    cursor.execute(
+                        """
+                        UPDATE Wishlist_item
+                        SET Priority = %s,
+                            Short_note = %s
+                        WHERE Wishlist_item_ID = %s
+                        """,
+                        (priority, note or None, item["Wishlist_item_ID"]),
+                    )
+                    msg = "Updated wishlist item."
+                else:
+                    # Chưa có: tạo mới, Quantity mặc định = 1
+                    cursor.execute("SELECT generate_id() AS id")
+                    witem_id = cursor.fetchone()["id"]
+
+                    cursor.execute(
+                        """
+                        INSERT INTO Wishlist_item
+                            (Wishlist_item_ID, Wishlist_ID, ASIN,
+                             Quantity, Priority, Short_note)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        """,
+                        (witem_id, wishlist_id, asin,
+                         1, priority, note or None),
+                    )
+                    msg = "Added product to wishlist."
+
+                conn.commit()
+                cursor.close()
+                conn.close()
+
+                flash(msg, "success")
+                return redirect(url_for("wishlist_detail", wishlist_id=wishlist_id))
+
+            except Error as e:
+                conn.rollback()
+                errors.append(f"error when add to wishlist: {e}")
+
+        for msg in errors:
+            flash(msg, "danger")
+
+    # 2. Load list wishlist cho dropdown
+    cursor.execute(
+        """
+        SELECT 
+            w.Wishlist_ID,
+            w.Buyer_ID,
+            u.User_name,
+            u.Display_name,
+            COUNT(wi.Wishlist_item_ID) AS Item_count
+        FROM Wishlist w
+        JOIN Buyer b ON w.Buyer_ID = b.Buyer_ID
+        JOIN Usr   u ON b.User_ID = u.User_ID
+        LEFT JOIN Wishlist_item wi ON w.Wishlist_ID = wi.Wishlist_ID
+        GROUP BY w.Wishlist_ID, w.Buyer_ID, u.User_name, u.Display_name
+        ORDER BY w.Wishlist_ID
+        """
+    )
+    wishlists = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "wishlist_add_item.html",
+        product=product,
+        wishlists=wishlists,
+    )
+
+@app.route("/products/<asin>")
+def product_detail(asin):
+    if "db_user" not in session:
+        return redirect(url_for("login"))
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # Query thông tin sản phẩm + category + media (ảnh)
+    cursor.execute(
+        """
+        SELECT 
+            p.ASIN, p.Product_title, p.Brand, p.Description, p.Weight, p.Dimensions,
+            c.Hierarchy AS Category_Hierarchy,
+            m.Primary_image
+        FROM Product p
+        LEFT JOIN Category c ON p.Category_ID = c.Category_ID
+        LEFT JOIN Media m ON p.ASIN = m.ASIN
+        WHERE p.ASIN = %s
+        """,
+        (asin,),
+    )
+    product = cursor.fetchone()
+
+    if not product:
+        cursor.close()
+        conn.close()
+        flash("Product not found.", "danger")
+        return redirect(url_for("product_list"))
+
+    # Query offers (giống trước, nhưng không cần selected_asin)
+    cursor.execute(
+        """
+        SELECT
+            o.Offer_ID, o.Seller_ID, s.Storefront_name, s.Operation_status,
+            o.Item_condition, o.Price, o.Currency, o.Fulfill_method,
+            o.Handling_time, o.Inventory_pos
+        FROM Offer o
+        LEFT JOIN Seller s ON o.Seller_ID = s.Seller_ID
+        WHERE o.ASIN = %s
+        ORDER BY o.Price ASC
+        """,
+        (asin,),
+    )
+    offers = cursor.fetchall()
+
+    # Query reviews (join để lấy tên reviewer)
+    cursor.execute(
+        """
+        SELECT 
+            pr.Product_review_ID, pr.Star_rating, pr.Free_text_content, pr.Timestamp,
+            COALESCE(u.Display_name, u.User_name) AS Reviewer_name
+        FROM Product_review pr
+        JOIN Buyer b ON pr.Buyer_ID = b.Buyer_ID
+        JOIN Usr u ON b.User_ID = u.User_ID
+        WHERE pr.ASIN = %s
+        ORDER BY pr.Timestamp DESC
+        """,
+        (asin,),
+    )
+    reviews = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "product_detail.html",
+        product=product,
+        offers=offers,
+        reviews=reviews
+    )
 if __name__ == "__main__":
     app.run(debug=True, port=5001)

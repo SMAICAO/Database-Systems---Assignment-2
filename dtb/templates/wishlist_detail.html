@@ -22,7 +22,7 @@
       <th>Wishlist Item ID</th>
       <th>ASIN</th>
       <th>Product Title</th>
-      <th>Quantity</th>
+      <!-- Xóa <th>Quantity</th> -->
       <th>Priority</th>
       <th>Note</th>
     </tr>
@@ -33,11 +33,14 @@
         <td>{{ item.Wishlist_item_ID }}</td>
         <td>{{ item.ASIN }}</td>
         <td>{{ item.Product_title }}</td>
-        <td>{{ item.Quantity }}</td>
+        <!-- Xóa <td>{{ item.Quantity }}</td> -->
         <td>{{ item.Priority }}</td>
         <td>{{ item.Short_note }}</td>
       </tr>
     {% endfor %}
+    ...
+  </tbody>
+</table>
 
     {% if items|length == 0 %}
       <tr>
