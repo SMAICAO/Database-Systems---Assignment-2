@@ -1,0 +1,43 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h3 class="mb-3">Wishlists</h3>
+
+<table class="table table-striped table-hover align-middle">
+  <thead class="table-dark">
+    <tr>
+      <th>Wishlist ID</th>
+      <th>Buyer ID</th>
+      <th>User name</th>
+      <th>Display name</th>
+      <th>#Items</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for w in wishlists %}
+      <tr>
+        <td>{{ w.Wishlist_ID }}</td>
+        <td>{{ w.Buyer_ID }}</td>
+        <td>{{ w.User_name }}</td>
+        <td>{{ w.Display_name }}</td>
+        <td>{{ w.Item_count }}</td>
+        <td>
+          <a href="{{ url_for('wishlist_detail', wishlist_id=w.Wishlist_ID) }}"
+             class="btn btn-sm btn-outline-primary">
+            View items
+          </a>
+        </td>
+      </tr>
+    {% endfor %}
+
+    {% if wishlists|length == 0 %}
+      <tr>
+        <td colspan="6" class="text-center text-muted">
+          No wishlists found.
+        </td>
+      </tr>
+    {% endif %}
+  </tbody>
+</table>
+{% endblock %}

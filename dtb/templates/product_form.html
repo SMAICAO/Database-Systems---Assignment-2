@@ -1,0 +1,78 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h3 class="mb-4">
+  {% if is_edit %}Edit Product{% else %}New Product{% endif %}
+</h3>
+
+<form method="post" class="row g-3">
+  <div class="col-md-3">
+    <label class="form-label">ASIN</label>
+    <input type="text" name="asin" maxlength="10"
+       class="form-control"
+       value="{{ product.asin }}"
+       {% if is_edit %}readonly{% endif %}>
+    {% if not is_edit %}
+      <div class="form-text">10 ký tự in hoa (A-Z, 0-9).</div>
+    {% endif %}
+
+  </div>
+
+  <div class="col-md-5">
+    <label class="form-label">Product Title</label>
+    <input type="text" name="title" class="form-control" value="{{ product.title }}" required>
+  </div>
+
+  <div class="col-md-4">
+    <label class="form-label">Brand</label>
+    <input type="text" name="brand" class="form-control" value="{{ product.brand }}">
+  </div>
+
+  <div class="col-md-4">
+    <label class="form-label">Category</label>
+    <select name="category_id" class="form-select" required>
+      <option value="">-- Choose --</option>
+      {% for c in categories %}
+        <option value="{{ c.Category_ID }}"
+          {% if product.category_id == c.Category_ID %}selected{% endif %}>
+          {{ c.Category_ID }} - {{ c.Hierarchy }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-md-4">
+    <label class="form-label">Manufacturer ID</label>
+    <input type="text" name="manufacturer_id" class="form-control"
+           value="{{ product.manufacturer_id }}" required>
+  </div>
+
+  <div class="col-md-4">
+    <label class="form-label">Weight</label>
+    <input type="text" name="weight" class="form-control" value="{{ product.weight }}">
+    <div class="form-text">>= 0, có thể để trống.</div>
+  </div>
+
+  <div class="col-md-6">
+    <label class="form-label">Flex Attribute</label>
+    <input type="text" name="flex_attribute" class="form-control" value="{{ product.flex_attribute }}">
+  </div>
+
+  <div class="col-md-6">
+    <label class="form-label">Dimensions</label>
+    <input type="text" name="dimensions" class="form-control" value="{{ product.dimensions }}">
+  </div>
+
+  <div class="col-12">
+    <label class="form-label">Description</label>
+    <textarea name="description" class="form-control" rows="3">{{ product.description }}</textarea>
+  </div>
+
+  <div class="col-12 d-flex justify-content-between mt-3">
+    <a href="{{ url_for('product_list') }}" class="btn btn-secondary">Back</a>
+    <button type="submit" class="btn btn-primary">
+      {% if is_edit %}Save changes{% else %}Create{% endif %}
+    </button>
+  </div>
+</form>
+{% endblock %}

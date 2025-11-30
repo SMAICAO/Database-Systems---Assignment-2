@@ -1,0 +1,73 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h3 class="mb-4">Add offer to cart</h3>
+
+<div class="mb-3">
+  <span class="badge bg-secondary">Offer: {{ offer.Offer_ID }}</span>
+  <span class="badge bg-info text-dark ms-2">ASIN: {{ offer.ASIN }}</span>
+</div>
+<p>
+  <strong>{{ offer.Product_title }}</strong><br>
+  Seller: {{ offer.Storefront_name }} ({{ offer.Seller_ID }})<br>
+  Price: {{ "{:,.2f}".format(offer.Price) }} {{ offer.Currency }} –
+  Condition: {{ offer.Item_condition }}
+</p>
+
+<form method="post" class="row g-3" style="max-width: 520px;">
+  <div class="col-12">
+    <label class="form-label">Quantity</label>
+    <input type="number" name="quantity" class="form-control"
+           value="1" min="1" max="{{ offer.Inventory_pos }}" required>
+    <div class="form-text">
+      Tồn kho hiện tại: {{ offer.Inventory_pos }}.
+    </div>
+  </div>
+
+  <div class="col-12">
+    <label class="form-label">Choose cart</label>
+
+    <div class="form-check">
+      <input class="form-check-input" type="radio" name="cart_mode"
+             id="mode_new" value="new" checked>
+      <label class="form-check-label" for="mode_new">
+        Create new cart
+      </label>
+    </div>
+    <div class="mt-2 ms-4">
+      <label class="form-label">Cart name (optional)</label>
+      <input type="text" name="cart_name" class="form-control"
+             placeholder="Ví dụ: Alice – Laptop order">
+    </div>
+
+    <div class="form-check mt-3">
+      <input class="form-check-input" type="radio" name="cart_mode"
+             id="mode_existing" value="existing">
+      <label class="form-check-label" for="mode_existing">
+        Add to existing cart
+      </label>
+    </div>
+    <div class="mt-2 ms-4">
+      <select name="existing_cart_id" class="form-select">
+        <option value="">-- Choose cart --</option>
+        {% for c in carts %}
+          <option value="{{ c.Cart_ID }}">
+            {{ c.Cart_ID }} – {{ c.Cart_name or 'No name' }}
+            ({{ c.Item_count }} items,
+             total {{ "{:,.2f}".format(c.Total_amount or 0) }} USD)
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="col-12 d-flex justify-content-between mt-3">
+    <a href="{{ url_for('product_list') }}" class="btn btn-secondary">
+      Back
+    </a>
+    <button type="submit" class="btn btn-primary">
+      Add to cart
+    </button>
+  </div>
+</form>
+{% endblock %}
