@@ -44,21 +44,17 @@ Step 1: Create the schema and tables
 
 source amazon.sql;
 
+Step 2: Activate Database Triggers
 
-Step 2: Populate initial data
-
-source insert.sql;
-
+source trigger.sql;
 
 Step 3: Load Stored Procedures and Functions
 
 source pro.sql; -- (Refers to function.sql)
 
+Step 4: Populate initial data
 
-Step 4: Activate Database Triggers
-
-source trigger.sql;
-
+source insert.sql;
 
 
 🚀 Running the Application
